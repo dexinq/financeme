@@ -1,14 +1,17 @@
-import time
 import datetime
-from dateutil import parser
 
-import tushare as ts
 import pandas as pd
+import tushare as ts
+from dateutil import parser
 
 
 class StaticInfo(object):
     storage_basic_path = "../data_storage/"
     storage_update_date = "../data_storage/date"
+    stock_pool = {
+        '000002': 11476, '000725': 18320, '600030': 41874, '600036': 17808, '600048': 40049, '600068': 20125,
+        '600690': 18380, '601668': 12735, '600728': 32190
+    }
 
     data_type = {
         "industry": storage_basic_path + "industry_data.csv",
@@ -16,42 +19,64 @@ class StaticInfo(object):
         "area": storage_basic_path + "area_data.csv",
     }
 
+    @staticmethod
+    def get_stock_pool():
+        return StaticInfo.stock_pool
 
-def init_stock_pool():
-    stock_pool = {
-        '000002': 11476, '000725': 18320, '600030': 41874, '600036': 17808, '600048': 40049, '600068': 20125,
-        '600690': 18380, '601668': 12735, '600728': 32190
-    }
+    @staticmethod
+    def get_stock_hist_data_path(code):
+        if len(str(code)) == 6:
+            templ = "{0}{1}{2}.csv".format(StaticInfo.storage_basic_path, "stock_hist_data/", str(code))
+            return templ
+        else:
+            print "wrong type of code style"
+            return None
 
-    total_value = 0
-    for v in stock_pool.values():
-        total_value += v
+    @staticmethod
+    def init_stock_pool():
 
-    for stock in stock_pool:
-        stock_pool[stock] = round(float(stock_pool[stock]) / total_value * 100, 4)
+        total_value = 0
+        for v in StaticInfo.stock_pool.values():
+            total_value += v
 
-    return stock_pool
+        for stock in StaticInfo.stock_pool:
+            StaticInfo.stock_pool[stock] = round(float(StaticInfo.stock_pool[stock]) / total_value * 100, 4)
+
+        return StaticInfo.stock_pool
 
 
 class InitStaticInfo(object):
     @staticmethod
-    def update_static_info():
+    def _get_stock_hist_data(code_list=list()):
+        if code_list:
+            for code in code_list:
+                hist_path = StaticInfo.get_stock_hist_data_path(code)
+                print hist_path
+                if hist_path:
+                    ts.get_hist_data(code).to_csv(hist_path, index=False)
+
+    @staticmethod
+    def update_static_info(force=False):
         now = datetime.datetime.now()
         t = None
-        f = open(StaticInfo.storage_update_date, "rb+")
-        line = f.read()
+        rf = open(StaticInfo.storage_update_date, "r")
+        line = rf.read()
+        rf.close()
+        wf = open(StaticInfo.storage_update_date, "w")
         if line:
             t = parser.parse(line)
         else:
-            f.write(str(now))
+            wf.write(str(now))
         delta_day = (now - t).days
-
-        if delta_day > 0:
-            f.write(str(now))
-
+        if delta_day > 0 or force:
+            wf.write(str(now))
+            print "static info need to update"
             ts.get_industry_classified().to_csv(StaticInfo.data_type["industry"], index=False)
             ts.get_concept_classified().to_csv(StaticInfo.data_type["concept"], index=False)
             ts.get_area_classified().to_csv(StaticInfo.data_type["area"], index=False)
+            InitStaticInfo._get_stock_hist_data(StaticInfo.get_stock_pool().keys())
+
+        wf.close()
 
     @staticmethod
     def get_static_info(info_type=None):
@@ -75,9 +100,9 @@ class InvestmentModel(object):
 
 
 class AnalyseInvestment(object):
-    def __init__(self, analyse_dim=[]):
+    def __init__(self, analyse_dim=list()):
         self.analyse_dim = analyse_dim if analyse_dim else ["industry", "area", "concept"]
-        self.stock_pool = init_stock_pool()
+        self.stock_pool = StaticInfo.init_stock_pool()
         self.si = InitStaticInfo()
         self.res = list()
 
@@ -100,7 +125,7 @@ class AnalyseInvestment(object):
 
 
 if __name__ == '__main__':
-    InitStaticInfo.update_static_info()
-    # ai = AnalyseInvestment()
-    # for stock in ai.start_analyse():
-    #     print stock
+    InitStaticInfo.update_static_info(force=True)
+    ai = AnalyseInvestment()
+    for stock in ai.start_analyse():
+        print stock
